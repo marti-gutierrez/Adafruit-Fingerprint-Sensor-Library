@@ -150,10 +150,18 @@ typedef struct
 
 } s_Adafruit_Fingerprint;
 
+typedef struct
+{
+  void (*write)(uint8_t);
+  uint8_t (*read)(void);
+} s_software_serial;
+
+s_software_serial serial;
+
 /* void begin(uint32_t baud); */
 
 bool verifyPassword();
-uint8_t getParameters();
+uint8_t getParameters(s_Adafruit_Fingerprint *fingerprint);
 
 uint8_t getImage();
 uint8_t image2Tz(uint8_t slot);
@@ -175,6 +183,6 @@ uint8_t LEDcontrol(bool state);
   uint8_t setSecurityLevel(uint8_t level);
   uint8_t setPacketSize(uint8_t size); */
 
-void writeStructuredPacket(void (*write)(uint8_t));
-uint8_t getStructuredPacket(uint8_t (*read)(void), uint16_t timeout);
+void writeStructuredPacket();
+uint8_t getStructuredPacket(uint16_t timeout);
 #endif

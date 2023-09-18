@@ -52,7 +52,7 @@ static void GET_CMD_PACKET(uint8_t no_params, ...)
   packet.type = FINGERPRINT_COMMANDPACKET;
   packet.length = no_params;
   writeStructuredPacket();
-  if (getStructuredPacket() != FINGERPRINT_OK)
+  if (getStructuredPacket(DEFAULTTIMEOUT) != FINGERPRINT_OK)
     return FINGERPRINT_PACKETRECIEVEERR;
   if (packet.type != FINGERPRINT_ACKPACKET)
     return FINGERPRINT_PACKETRECIEVEERR;
@@ -356,30 +356,30 @@ uint8_t setPassword(uint32_t newPassword)
 */
 /**************************************************************************/
 
-void writeStructuredPacket(void (*write)(uint8_t))
+void writeStructuredPacket()
 {
 
-  (*write)((uint8_t)(FINGERPRINT_STARTCODE >> 8));
-  (*write)((uint8_t)(FINGERPRINT_STARTCODE & 0xFF));
-  (*write)(0xFF);
-  (*write)(0xFF);
-  (*write)(0xFF);
-  (*write)(0xFF);
-  (*write)(packet.type);
+  (*serial.write)((uint8_t)(FINGERPRINT_STARTCODE >> 8));
+  (*serial.write)((uint8_t)(FINGERPRINT_STARTCODE & 0xFF));
+  (*serial.write)(0xFF);
+  (*serial.write)(0xFF);
+  (*serial.write)(0xFF);
+  (*serial.write)(0xFF);
+  (*serial.write)(packet.type);
 
   uint16_t wire_length = packet.length + 2;
-  (*write)((uint8_t)(wire_length >> 8));
-  (*write)((uint8_t)(wire_length & 0xFF));
+  (*serial.write)((uint8_t)(wire_length >> 8));
+  (*serial.write)((uint8_t)(wire_length & 0xFF));
 
   uint16_t sum = ((wire_length) >> 8) + ((wire_length)&0xFF) + packet.type;
   for (uint8_t i = 0; i < packet.length; i++)
   {
-    (*write)(packet.data[i]);
+    (*serial.write)(packet.data[i]);
     sum += packet.data[i];
   }
 
-  (*write)((uint8_t)(sum >> 8));
-  (*write)((uint8_t)(sum & 0xFF));
+  (*serial.write)((uint8_t)(sum >> 8));
+  (*serial.write)((uint8_t)(sum & 0xFF));
 }
 
 /**************************************************************************/
@@ -393,7 +393,7 @@ void writeStructuredPacket(void (*write)(uint8_t))
    <code>FINGERPRINT_BADPACKET</code> on failure
 */
 /**************************************************************************/
-uint8_t getStructuredPacket(uint16_t timeout, uint8_t (*read)(void))
+uint8_t getStructuredPacket(uint16_t timeout)
 {
   uint8_t byte;
   const uint8_t header[7] = {(FINGERPRINT_STARTCODE >> 8), (FINGERPRINT_STARTCODE & 0xFF), 0xFF, 0xFF, 0xFF, 0xFF, FINGERPRINT_ACKPACKET};
@@ -410,7 +410,7 @@ uint8_t getStructuredPacket(uint16_t timeout, uint8_t (*read)(void))
         return FINGERPRINT_TIMEOUT;
       }
     } */
-    byte = (*read)();
+    byte = (*serial.read)();
     if (idx <= 6)
     {
       if (byte != header[idx])

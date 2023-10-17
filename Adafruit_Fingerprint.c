@@ -1,5 +1,5 @@
 /*!
- * @file Adafruit_Fingerprint.cpp
+ * @file Adafruit_Fingerprint.c
  *
  * @mainpage Adafruit Fingerprint Sensor Library
  *
@@ -29,32 +29,24 @@
 #include "Adafruit_Fingerprint.h"
 #include <stdarg.h>
 
-typedef struct
-{
-  uint8_t address[4]; ///< 32-bit Fingerprint sensor address
-  uint8_t type;       ///< Type of packet
-  uint16_t length;    ///< Length of packet
-  uint8_t data[64];   ///< The raw buffer for packet payload
-} s_Adafruit_Fingerprint_Packet;
-
-s_Adafruit_Fingerprint_Packet packet;
 uint32_t password = 0x00000000;
 
-static void GET_CMD_PACKET(uint8_t no_params, ...)
+static void GET_CMD_PACKET(struct fingerPacket_t *packet,uint8_t no_params, ...)
 {
   va_list args;
   va_start(args, no_params);
+  packet->data = malloc(sizeof(uint8_t)*no_params);
   for (uint8_t i = 0; i < no_params; i++)
   {
-    packet.data[i] = va_arg(args, int);
+    packet->data[i] = va_arg(args, int);
   }
   va_end(args);
-  packet.type = FINGERPRINT_COMMANDPACKET;
-  packet.length = no_params;
+  packet->type = FINGERPRINT_COMMANDPACKET;
+  packet->length = no_params;
   writeStructuredPacket();
   if (getStructuredPacket(DEFAULTTIMEOUT) != FINGERPRINT_OK)
     return FINGERPRINT_PACKETRECIEVEERR;
-  if (packet.type != FINGERPRINT_ACKPACKET)
+  if (packet->type != FINGERPRINT_ACKPACKET)
     return FINGERPRINT_PACKETRECIEVEERR;
 }
 
@@ -66,17 +58,17 @@ static void GET_CMD_PACKET(uint8_t no_params, ...)
 */
 /**************************************************************************/
 
-static uint8_t checkPassword()
+static uint8_t checkPassword(struct fingerPacket_t *packet)
 {
   GET_CMD_PACKET(5, FINGERPRINT_VERIFYPASSWORD, (uint8_t)(password >> 24),
                  (uint8_t)(password >> 16), (uint8_t)(password >> 8),
                  (uint8_t)(password & 0xFF));
-  return (packet.data[0] == FINGERPRINT_OK) ? FINGERPRINT_OK : FINGERPRINT_PACKETRECIEVEERR;
+  return (packet->data[0] == FINGERPRINT_OK) ? FINGERPRINT_OK : FINGERPRINT_PACKETRECIEVEERR;
 }
 
-bool verifyPassword()
+bool verifyPassword(struct fingerPacket_t *packet)
 {
-  return checkPassword() == FINGERPRINT_OK;
+  return checkPassword(packet) == FINGERPRINT_OK;
 }
 
 /**************************************************************************/
@@ -356,30 +348,30 @@ uint8_t setPassword(uint32_t newPassword)
 */
 /**************************************************************************/
 
-void writeStructuredPacket()
+void writeStructuredPacket(struct fingerPacket_t *packet)
 {
 
-  (*serial.write)((uint8_t)(FINGERPRINT_STARTCODE >> 8));
-  (*serial.write)((uint8_t)(FINGERPRINT_STARTCODE & 0xFF));
-  (*serial.write)(0xFF);
-  (*serial.write)(0xFF);
-  (*serial.write)(0xFF);
-  (*serial.write)(0xFF);
-  (*serial.write)(packet.type);
+  uartSend((uint8_t)(FINGERPRINT_STARTCODE >> 8));
+  uartSend((uint8_t)(FINGERPRINT_STARTCODE & 0xFF));
+  uartSend(0xFF);
+  uartSend(0xFF);
+  uartSend(0xFF);
+  uartSend(0xFF);
+  uartSend(FINGERPRINT_COMMANDPACKET);
+  uint8_t wire_length = packet->length + 2;
+  uartSend((uint8_t)0x00);
+  uartSend((uint8_t)(wire_length & 0xFF));
 
-  uint16_t wire_length = packet.length + 2;
-  (*serial.write)((uint8_t)(wire_length >> 8));
-  (*serial.write)((uint8_t)(wire_length & 0xFF));
-
-  uint16_t sum = ((wire_length) >> 8) + ((wire_length)&0xFF) + packet.type;
-  for (uint8_t i = 0; i < packet.length; i++)
+  uint16_t sum = ((wire_length) >> 8) + ((wire_length)&0xFF) + FINGERPRINT_COMMANDPACKET;
+  for (uint8_t i = 0; i < packet->length; i++)
   {
-    (*serial.write)(packet.data[i]);
-    sum += packet.data[i];
+    uartSend(packet->data[i]);
+    sum += packet->data[i];
   }
-
-  (*serial.write)((uint8_t)(sum >> 8));
-  (*serial.write)((uint8_t)(sum & 0xFF));
+  uartSend((uint8_t)(sum >> 8));
+  uartSend((uint8_t)(sum & 0xFF));
+  free(packet->data);
+  packet->data = NULL;
 }
 
 /**************************************************************************/
@@ -393,11 +385,15 @@ void writeStructuredPacket()
    <code>FINGERPRINT_BADPACKET</code> on failure
 */
 /**************************************************************************/
-uint8_t getStructuredPacket(uint16_t timeout)
+
+#define PACKAGE_INDEX_LENGHT 8
+#define PACKAGE_INDEX_DATA 9
+uint8_t getStructuredPacket(uint16_t timeout, struct fingerPacket_t *packet)
 {
   uint8_t byte;
   const uint8_t header[7] = {(FINGERPRINT_STARTCODE >> 8), (FINGERPRINT_STARTCODE & 0xFF), 0xFF, 0xFF, 0xFF, 0xFF, FINGERPRINT_ACKPACKET};
-  uint16_t idx = 0, timer = 0;
+  uint8_t index = 0, timer = 0;
+  uint8_t trama = 0;
 
   while (1) // loop
   {
@@ -410,26 +406,30 @@ uint8_t getStructuredPacket(uint16_t timeout)
         return FINGERPRINT_TIMEOUT;
       }
     } */
-    byte = (*serial.read)();
-    if (idx <= 6)
+    trama += (index < PACKAGE_INDEX_LENGHT) ? 0 : 1;
+    byte = uartReceive();
+    switch (trama)
     {
-      if (byte != header[idx])
-        return FINGERPRINT_BADPACKET;
+      case 0: //6
+        if (byte != header[index])
+          return FINGERPRINT_BADPACKET;
+        break;
+      case 1: //8
+        packet->length = byte;
+        packet->data = malloc(sizeof(uint8_t)*packet->length);
+        break;
+      default: // >8
+        packet->data[index - PACKAGE_INDEX_DATA ] = byte;
+        if ((index - PACKAGE_INDEX_LENGHT) == packet->length)
+          free(packet->data);
+          packet->data = NULL;
+          return FINGERPRINT_OK;
+        break;
     }
-    if (idx == 8)
-      packet.length = byte;
-    if (idx > 8)
-    {
-      packet.data[idx - 9] = byte;
-      if ((idx - 8) == packet.length)
-        return FINGERPRINT_OK;
-    }
-    idx++;
-    if ((idx + 9) >= sizeof(packet.data))
+    index++;
+    if ((index + 9) >= sizeof(packet->data))
     {
       return FINGERPRINT_BADPACKET;
     }
   }
-  // Shouldn't get here so...
-  return FINGERPRINT_BADPACKET;
 }

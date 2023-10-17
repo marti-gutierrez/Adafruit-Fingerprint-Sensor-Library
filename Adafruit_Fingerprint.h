@@ -118,9 +118,18 @@
 #define DEFAULTTIMEOUT 1000 //!< UART reading timeout in milliseconds
 
 #include <stdint.h>
+#include <stdlib.h>
 #include <stdbool.h>
 
 ///! Helper class to craft UART packets
+
+struct fingerPacket_t
+{
+  uint8_t type;
+  uint8_t length;
+  uint8_t *data;
+};
+
 
 ///! Helper class to communicate with and keep state for fingerprint sensors
 typedef struct
@@ -134,13 +143,13 @@ typedef struct
   /// The number of stored templates in the sensor, set by getTemplateCount()
   uint16_t templateCount;
 
-  uint16_t status_reg;    ///< The status register (set by getParameters)
-  uint16_t system_id;     ///< The system identifier (set by getParameters)
-  uint16_t capacity;      ///< The fingerprint capacity (set by getParameters)
-  uint16_t security_leve; ///< The security level (set by getParameters)
-  uint32_t device_addr;   ///< The device address (set by getParameters) */
-  uint16_t packet_len;    ///< The max packet length (set by getParameters)
-  uint16_t baud_rate;     ///< The UART baud rate (set by getParameters) */
+  uint16_t statusReg;    ///< The status register (set by getParameters)
+  uint16_t systemId;     ///< The system identifier (set by getParameters)
+  uint16_t capacity;     ///< The fingerprint capacity (set by getParameters)
+  uint16_t securityLevel;///< The security level (set by getParameters)
+  uint32_t deviceAddr;   ///< The device address (set by getParameters) */
+  uint16_t packetLen;    ///< The max packet length (set by getParameters)
+  uint16_t baudRate;     ///< The UART baud rate (set by getParameters) */
 
   /* private:
     uint8_t writeRegister(uint8_t regAdd, uint8_t value);
@@ -150,21 +159,15 @@ typedef struct
 
 } s_Adafruit_Fingerprint;
 
-typedef struct
-{
-  void (*write)(uint8_t);
-  uint8_t (*read)(void);
-} s_software_serial;
-
-s_software_serial serial;
 
 /* void begin(uint32_t baud); */
 
-bool verifyPassword();
-uint8_t getParameters(s_Adafruit_Fingerprint *fingerprint);
+bool verifyPassword(struct fingerPacket_t *packet);
+//uint8_t getParameters(s_Adafruit_Fingerprint *fingerprint);
 
-uint8_t getImage();
-uint8_t image2Tz(uint8_t slot);
+
+/* uint8_t getImage();
+// uint8_t image2Tz(uint8_t slot);
 uint8_t createModel();
 
 uint8_t emptyDatabase();
@@ -184,5 +187,5 @@ uint8_t LEDcontrol(bool state);
   uint8_t setPacketSize(uint8_t size); */
 
 void writeStructuredPacket();
-uint8_t getStructuredPacket(uint16_t timeout);
+uint8_t getStructuredPacket(uint16_t timeout); */
 #endif
